@@ -1,3 +1,5 @@
+//v.1.1.5 -- Credit: https://github.com/KhoabuHtiG
+//This is just a beta project! Used for practicing so there is a lot of things that's not good. Thank you!
 #include <iostream>
 #include <filesystem>
 #include <fstream>
@@ -7,11 +9,37 @@
 #include <ctime>
 #include <chrono>
 namespace fs = std::filesystem;
-static fs::path main_direc = "./data";
+static const fs::path main_direc = "./ATM_Data";
 
+//Users data
+typedef struct {
+    int pin;
+    int balance;
+    std::string username;
+    std::string password;
+} user_data;
+
+//Valid password check
+std::string requirePassword(std::string password) {
+    if (!(password.size() >= 8)) {
+        std::cout << "Password must be 8 characters least.";
+        return "";
+    }
+    return password;
+}
+
+//Valid pin check
+int requirePin(int pin) {
+    if (!(pin >= 1000 && pin <= 9999)) {
+        std::cout << "PIN must be 4 numbers least.";
+        return -1;
+    }
+    return pin;
+}
+
+//Get the current time in real life
 std::string getTimestamp() {
     auto now = std::chrono::system_clock::now();
-
     std::time_t t = std::chrono::system_clock::to_time_t(now);
 
     char buf[100];
@@ -20,76 +48,116 @@ std::string getTimestamp() {
     return std::string(buf);
 }
 
-void save_data(std::string &username, std::string &password, int &balance, int &PIN) {
-    if (!(fs::exists(main_direc))) {
-        fs::create_directory(main_direc);
-    }
-    fs::path userfolder = main_direc / ("Userdata_" + username);
-    if (!(fs::exists(userfolder))) {
-        fs::create_directory(userfolder);
-    }
-
-    try {
-        fs::path userdfile = userfolder / ("UserData_" + username + ".txt");
-        std::ofstream userdata(userdfile);
-
-        if (userdata.is_open()) {
-            userdata << username << '\n';
-            userdata << password << '\n';
-            userdata << balance << '\n';
-            userdata << PIN << '\n';
-            userdata.close();
+class Data {
+public:
+    //Saving users data to file
+    static void save_data(std::string username, std::string password, int balance, int pin) {
+        //Create folders if they aren't exist
+        if (!(fs::exists(main_direc))) {
+            fs::create_directory(main_direc);
         }
-    } catch(fs::filesystem_error &e) {
-        std::cout << "Error: " << e.what();
-    }
+        fs::path userfolder = main_direc / ("Userdata_" + username);
+        if (!(fs::exists(userfolder))) {
+            fs::create_directory(userfolder);
+        }
+
+        try {
+           fs::path userdfile = userfolder / ("UserData_" + username + ".txt");
+           //Overwriting the file
+           std::ofstream userdata(userdfile, std::ios::trunc);
+
+            if (userdata.is_open()) {
+                userdata << username << '\n';
+                userdata << password << '\n';
+                userdata << balance << '\n';
+                userdata << pin << '\n';
+                userdata.close();
+            }
+        } catch(fs::filesystem_error &e) {
+            std::cout << "Error found: " << e.what();
+        }
+    };
+
+    //Geting users data from file
+    static bool get_data(std::string &username, std::string &password, int &balance, int &pin) {
+        fs::path userfolder = main_direc / ("Userdata_" + username);
+        fs::path userdfile = userfolder / ("UserData_" + username + ".txt");
+        //Reading the file
+        std::ifstream userdata(userdfile, std::ios::in);
+        if (userdata.is_open()) {
+            std::string fileUser;
+            userdata >> fileUser;
+            userdata >> password;
+            userdata >> balance;
+            userdata >> pin;
+            userdata.close();
+            return (fileUser == username);
+        }
+        return false;
+    };
+
+    //Viewing transaction history
+    static bool viewtranslog(std::string &username) {
+        fs::path userdatafile = main_direc / ("UserData_" + username);
+
+        try {
+            fs::path translog_file = userdatafile / ("UserTranslog_" + username + ".txt");
+            //Reading the file
+            std::ifstream translog_data(translog_file, std::ios::in);
+
+            if (translog_data.is_open()) {
+                std::cout << "===TRANSACTION HISTORY===\n";
+                std::string line;
+                int count = 0;
+
+                while (std::getline(translog_data, line) && count < 10) {
+                    std::cout << line << '\n';
+                    count++;
+                    return true;
+                }
+
+                if (count == 0) {
+                    std::cout << "No transaction history found. ";
+                    return false;
+                }
+                translog_data.close();
+            }
+            std::cout << "No transaction history found. ";
+        } catch (fs::filesystem_error &e) {
+            std::cout << "Error found: " << e.what();
+            return false;
+        } 
+    };
 };
 
-bool get_data(std::string &lusername, std::string &lpassword, int &lbalance, int &lPIN) {
-    fs::path userfolder = main_direc / ("Userdata_" + lusername);
-    fs::path userdfile = userfolder / ("UserData_" + lusername + ".txt");
-    fs::path user_translogfile = userfolder / ("User_TransLog_" + lusername + ".txt");
-    std::ifstream userdata(userdfile);
-    if (userdata.is_open()) {
-        std::string fileUser;
-        userdata >> fileUser;
-        userdata >> lpassword;
-        userdata >> lbalance;
-        userdata >> lPIN;
-        userdata.close();
-        return (fileUser == lusername);
-    } return false;
-};
-
-void translog(std::string &lusername, int amount, std::string trans_type, std::string target, std::string target_name, int balance) {
-    fs::path userfolder = main_direc / ("Userdata_" + lusername);
+//Saving transacting log
+void translog(std::string &username, int amount, std::string trans_type, std::string target, std::string target_name, int balance) {
+    fs::path userfolder = main_direc / ("Userdata_" + username);
 
     try {
-        fs::path translog_file = userfolder / ("UserTranslog_" + lusername + ".txt");
+        fs::path translog_file = userfolder / ("UserTranslog_" + username + ".txt");
+        //Access to write in the file
         std::ofstream translog_data(translog_file, std::ios::app);
 
         if (translog_data.is_open()) {
             if (trans_type == "Transfer") {
-                translog_data << "[" << getTimestamp() << "] " 
-                              << "Transfer " << target << " " << target_name 
-                              << ": -" << amount << "$ | Balance: " << balance << "$\n";
-            }
-            if (trans_type == "Withdraw") {
-                translog_data << "[" << getTimestamp() << "] " 
-                              << "Withdrawed " << ": -" << amount << "$ | Balance: " << balance << "$\n";
+                translog_data << "[" << getTimestamp() << "] " << "Transfer " << target << " " << target_name 
+                    << ": -" << amount << "$ | Balance: " << balance << "$\n";
             }
             translog_data.close();
         }
     } catch (fs::filesystem_error &e) {
-        std::cout << "Error: " << e.what();
+        std::cout << "Error found: " << e.what();
     }
 }
 
-void withdrawlog(std::string &lusername, int amount, std::string trans_type, int balance) {
-    fs::path userfolder = main_direc / ("Userdata_" + lusername);
+//Saving withdrawing logs
+void withdrawlog(std::string &username, int &amount, std::string &trans_type, int &balance) {
+    fs::path userfolder = main_direc / ("Userdata_" + username);
 
     try {
-        fs::path translog_file = userfolder / ("UserTranslog_" + lusername + ".txt");
+        fs::path translog_file = userfolder / ("UserTranslog_" + username + ".txt");
+        //Add new transaction to the end of the file
         std::ofstream translog_data(translog_file, std::ios::app);
 
         if (translog_data.is_open()) {
@@ -100,102 +168,100 @@ void withdrawlog(std::string &lusername, int amount, std::string trans_type, int
             translog_data.close();
         }
     } catch (fs::filesystem_error &e) {
-        std::cout << "Error: " << e.what();
+        std::cout << "Error found: " << e.what();
     }
 }
 
-
-bool viewtranslog(std::string &lusername) {
-    fs::path userdfile = main_direc / ("UserData_" + lusername);
+//Saving depositing logs
+void depositlog(std::string &username, int &amount, std::string &trans_type, int &balance) {
+    fs::path userfolder = main_direc / ("Userdata_" + username);
 
     try {
-        fs::path translog_file = userdfile / ("UserTranslog_" + lusername + ".txt");
-        std::ifstream translog_data(translog_file, std::ios::app);
+        fs::path translog_file = userfolder / ("UserTranslog_" + username + ".txt");
+        //Add new transaction to the end of the file
+        std::ofstream translog_data(translog_file, std::ios::app);
 
         if (translog_data.is_open()) {
-            std::cout << "===TRANSACTION HISTORY===\n";
-            std::string line;
-            int count = 0;
-
-            while (std::getline(translog_data, line) && count < 10) {
-                std::cout << line << '\n';
-                count++;
-            }
-
-            if (count == 0) {
-                std::cout << "No transaction history found. ";
+            if (trans_type == "Deposit") {
+                translog_data << "[" << getTimestamp() << "] " 
+                    << "Deposited: " << ": -" << amount << "$ | Balance: " << balance << "$\n";
             }
             translog_data.close();
-        } else {
-            std::cout << "No transaction history found. ";
         }
     } catch (fs::filesystem_error &e) {
-        std::cout << "Error: " << e.what();
-    } return false;
+        std::cout << "Error found: " << e.what();
+    }
 };
 
-void transaction(std::string tusername, int &pin, int &current_balance, std::string tpassword) {
+//Transacting function
+void transaction(std::string &username, int &pin, int &current_balance, std::string &password) {
     int trans_pin, trans_balance, target_balance, target_pin;
+    //Get the target data for saving and finding
     std::string target_name, target_pass, type = "Transfer", t = "to";
 
     std::cout << "Enter the recipient's username: ";
     std::cin >> target_name;
 
     fs::path target_folder = main_direc / ("Userdata_" + target_name);
-    fs::path target_dfile = target_folder / ("UserData_" + target_name + ".txt");
-    std::ifstream targetuserdata(target_dfile);
+    fs::path target_datafile = target_folder / ("UserData_" + target_name + ".txt");
+    std::ifstream targetuserdata(target_datafile);
 
+    //Check if the system found the target or not
     if (!(targetuserdata.is_open())) {
         std::cout << "No account found with this name. ";
-    } else {
-        targetuserdata >> target_name;
-        targetuserdata >> target_pass;
-        targetuserdata >> target_balance;
-        targetuserdata >> target_pin;
-        std::cout << "Enter your amount for transaction: ";
-        std::cin >> trans_balance;
-
-        if (trans_balance <= current_balance) {
-            std::cout << "THIS ACTION CAN'T BE UNDO, SO BEWARE.\n";
-            std::cout << "Enter your PIN for continue: ";
-            std::cin >> trans_pin;
-
-            if (trans_pin == pin) {
-                current_balance -= trans_balance;
-                target_balance += trans_balance;
-
-                std::cout << "Transacted successfully\n";
-                std::cout << "You have transacted " << trans_balance << "$ to " << target_name << '\n';
-                std::cout << "Remaining balance: " << current_balance << "$\n";
-
-                translog(tusername, trans_balance, type, t, target_name, current_balance);
-                save_data(tusername, tpassword, current_balance, pin);
-                save_data(target_name, target_pass, target_balance, target_pin);
-                targetuserdata.close();
-            } else {
-                std::cout << "Inccorect PIN\n";
-            }
-        } else {
-            std::cout << "Insufficient funds\n";
-        }
+        return;
     }
+
+    targetuserdata >> target_name;
+    targetuserdata >> target_pass;
+    targetuserdata >> target_balance;
+    targetuserdata >> target_pin;
+    std::cout << "Enter your amount for transaction: ";
+    std::cin >> trans_balance;
+
+    //Prevent from transaction negative number
+    if (trans_balance <= current_balance) {
+        std::cout << "Enter your PIN for continue: ";
+        std::cin >> trans_pin;
+
+        if (!(trans_pin == pin)) {
+            std::cout << "Inccorect PIN\n";
+            return;
+        } 
+
+        current_balance -= trans_balance;
+        target_balance += trans_balance;
+
+        std::cout << "Transacted successfully\n";
+        std::cout << "You have transacted " << trans_balance << "$ to " << target_name << '\n';
+        std::cout << "Remaining balance: " << current_balance << "$\n";
+
+        translog(username, trans_balance, type, t, target_name, current_balance);
+        Data::save_data(username, password, current_balance, pin);
+        Data::save_data(target_name, target_pass, target_balance, target_pin);
+        targetuserdata.close();
+        return;
+    }
+
+    std::cout << "Insufficient funds\n";
+    return;
 };
 
+
+//Login function
 bool login(std::string &password) {
-    std::string compassword;
+    std::string comfirmPassword;
     int tries = 0, wait_time = 30;
 
     while (true) {
         std::cout << "Enter your password: ";
-        std::cin >> compassword;
+        std::cin >> comfirmPassword;
 
-        if (compassword == password) {
-            std::cout << "Login successful!\n";
-            return true;
-        } else {
+        if (!(comfirmPassword == password)) {
             std::cout << "Incorrect password.\n";
             tries++;
 
+            //Lock if the user takes too much attempt to log in
             if (tries >= 3) {
                 std::cout << "Too many failed attempts. Please wait before retrying.\n";    
                 for (int i = wait_time; i > 0; i--) {
@@ -207,10 +273,14 @@ bool login(std::string &password) {
                 std::cout << "\nYou may try again now. ";
                 tries = 2, wait_time *= 2;
             }
+        } else {
+            std::cout << "Login successful!\n";
+            return true;
         }
     }
 };
 
+//Creating new account function
 void new_account() {
     std::string username, password;
     int balance = 10000, pin;
@@ -223,155 +293,235 @@ void new_account() {
             std::cout << "Set a password (min 8 characters): ";
             std::cin >> password;
 
-            if (password.size() >= 8) {
+            std::string checkPassword = requirePassword(password);
+            if (checkPassword == "") {
+                std::cout << "Password must be 8 characters least.\n";
                 break;
-            } std::cout << "Password must be at least 8 characters. Try again.\n";
-        }
+            }
 
-        std::cout << "Set a 4-digit PIN (for withdrawals, deposits, and security): ";
-        std::cin >> pin;
-        save_data(username, password, balance, pin);
-        break;
+            std::cout << "Set a 4-digit PIN (for withdrawals, deposits, and security): ";
+            std::cin >> pin;
+
+            int checkPin = requirePin(pin);
+            if (checkPin == -1) {
+                std::cout << "PIN must be 4 numbers least.\n";
+                break;
+            } 
+
+            Data::save_data(username, password, balance, pin);
+            return;
+        }
+    }
+    return;
+};
+
+
+//Withdrawing function
+void withdraw(int &balance, std::string username, std::string pass, int pin) {
+    std::string withdrawType = "Withdraw";
+    int withdrawMoney, comfirmPin;
+
+    std::cout << "Enter your PIN: ";
+    std::cin >> comfirmPin;
+
+    if (comfirmPin != pin) {
+        std::cout << "Inccorect PIN. \n";
+        return;
+    }
+
+    std::cout << "Current balance: " << balance << "$\n";
+    std::cout << "Enter the amount you want to withdraw: ";
+    std::cin >> withdrawMoney;
+
+    if (withdrawMoney > balance) {
+        std::cout << "Insufficient funds\n";
+        return;
+    }
+
+    //Prevent from getting negative number
+    if (!(withdrawMoney > 1)) {
+        std::cout << "Can't be a negative number or zero\n";
+        return;
+    }
+
+    balance -= withdrawMoney;
+
+    std::cout << "Withdrawed successfully\n";
+    std::cout << "You withdrawed: " << withdrawMoney << "$\n";
+    std::cout << "Current balance: " << balance << "$\n";
+
+    Data::save_data(username, pass, balance, pin);
+    withdrawlog(username, withdrawMoney, withdrawType, balance);
+}
+
+
+//Depositing function
+void deposit(int &balance, std::string username, std::string pass, int pin) {
+    std::string depositType = "Deposit";
+    int depositMoney, comfirmPin;
+
+    std::cout << "Enter your PIN: ";
+    std::cin >> comfirmPin;
+
+    if (comfirmPin != pin) {
+        std::cout << "Inccorect PIN. \n";
+        return;
+    }
+
+    std::cout << "Current balance: " << balance << "$\n";
+    std::cout << "Enter the amount you want to deposit: ";
+    std::cin >> depositMoney;
+
+    if (depositMoney > balance) {
+        std::cout << "Insufficient funds\n";
+        return;
+    }
+
+    //Prevent from getting negative number
+    if (!(depositMoney >= 1)) {
+        std::cout << "Can't be a negative nubmers or zero\n";
+        return;
+    }
+    balance += depositMoney;
+
+    std::cout << "Deposited successfully\n";
+    std::cout << "You deposited: " << depositMoney << "$\n";
+    std::cout << "Current balance: " << balance << "$\n";
+
+    Data::save_data(username, pass, balance, pin);
+    depositlog(username, depositMoney, depositType, balance);
+}
+
+
+//Changing password function
+void changepass(std::string &username, std::string password, int balance, int pin) {
+    int comfirmPin;
+
+    std::cout << "Please type in your PIN to do this action: ";
+    std::cin >> comfirmPin;
+
+    if (!(comfirmPin == pin)) {
+        std::cout << "Inccorect PIN!";
+        return;
+    }
+
+    std::string newPassword;
+
+    std::cout << "Please type in your new password (min 8 characters): ";
+    std::cin >> newPassword;
+
+    std::string checkPassword = requirePassword(newPassword);
+    if (checkPassword != "") {
+        std::cout << "Changed password successfully!\n";
+        Data::save_data(username, password, balance, pin);
+    } return;
+
+    std::cout << "Password length must be 8 characters least.\n";
+    return;
+}
+
+
+//Removing account function
+bool removeAccount(std::string &username) {
+    fs::path userfolder = main_direc / ("Userdata_" + username);
+    
+    try {
+        //Check if the account had removed or not
+        bool removed = fs::remove_all(userfolder);
+        if (!(removed)) {
+            std::cout << "Failed to remove account. Please try again later.\n";
+            return false;
+        }
+        std::cout << "Removed successfully\n";
+        return true;
+    } catch(fs::filesystem_error &e) {
+        std::cout << "Error found: " << e.what() << '\n';
+        return false;
     }
 };
 
-void withdraw(int &balance, std::string atm_name, std::string pass, int pin) {
-    std::string withdraw_type = "Withdraw";
-    int withdraw_Money;
-    std::cout << "Current balance: " << balance << "$\n";
-    std::cout << "Enter the amount you want to withdraw: ";
-    std::cin >> withdraw_Money;
 
-    if (withdraw_Money > balance) {
-        std::cout << "Insufficient funds";
-    } else {
-        balance -= withdraw_Money;
-
-        std::cout << "Withdrawed successfully\n";
-        std::cout << "You withdrawed: " << withdraw_Money << "$\n";
-        std::cout << "Current balance: " << balance << "$\n";
-
-        save_data(atm_name, pass, balance, pin);
-        withdrawlog(atm_name, withdraw_Money, withdraw_type, balance);
-    }
-}
-
-void changepass(std::string &atm_name, std::string pass, int balance, int pin) {
-    std::string new_password;
-
-    std::cout << "Please type in your new password (min 8 characters): ";
-    std::cin >> new_password;
-
-    if (new_password.size() < 8) {
-        std::cout << "Password length must be atleast 8 characters.\n";
-    } else {
-        if (new_password != pass) {
-            std::cout << "Password changed successfully\n";
-            save_data(atm_name, new_password, balance, pin);
-        } else {
-            std::cout << "New password can't be the same as the old password.\n";
-        }
-    }
-}
-
-class your_ATM {
+//ATM
+class Your_ATM {
 private:
-    int balance, pin;
-    std::string atm_name, pass;
+    user_data userdata;
 public:
-    your_ATM(int b, std::string atm_n, int p, std::string pa) : balance(b), atm_name(atm_n), pin(p), pass(pa) {};
+    //Sync the users data
+    Your_ATM(int balance, std::string username, int pin, std::string password) {
+        userdata.balance = balance, userdata.username = username;
+        userdata.pin = pin, userdata.password = password;
+    }
 
-    auto Main() {
+    int Atm() {
         system("cls");
-        char ops;
-        int cpin;
+        char option;
 
         std::vector<std::string> menu = {
             "=====================================",
             "               ATM MENU              ",
             "=====================================",
             " [1] Check Balance", " [2] Transfer Funds", " [3] Withdraw Money", " [4] Deposit Money",
-            " [5] Change Password", " [6] View Transaction History", " [7] Log out",
+            " [5] Change Password", " [6] View Transaction History, ", " [7] Delete/remove account"
         };
 
-        std::cout << atm_name << " account\n";
-        for (std::string i : menu) {
-            std::cout << i << '\n';
-        }
+        //Print the menu
+        std::cout << userdata.username << " account\n";
+        for (std::string i : menu) {std::cout << i << '\n';}
 
         while (true) {
-            std::cout << "Type in your options(1-7), m to show the menu again, q to quit and 'l' to clear screen: ";
-            std::cin >> ops;
+            std::cout << "Type in your options(1-7), m to show the menu again, q to log out: ";
+            std::cin >> option;
 
-            if (ops == 'q' || ops == 'Q' || ops == '7') {
-                std::cout << "Data saved\n";
-                break;
+            if (option == 'q' || option == 'Q') {std::cout << "Data saved\n"; break;}
+            
+            if (option == 'm' || option == 'M') {
+                for (std::string i : menu) {
+                    std::cout << i << '\n';
+                }
             }
 
-            switch(ops) {
-                case('m'):
-                case('M'):
-                    for (std::string i : menu) {
-                        std::cout << i << '\n';
-                    }
-
-                case('l'):
-                case('L'):
-                    system("cls");
-                    for (std::string i : menu) {
-                        std::cout << i << '\n';
-                    }
-
-                    std::cout << "Type in your options(1-7), m to show the menu again, q to quit and 'l' to clear screen: ";
-
+            switch(option) {
                 case('1'):
-                    std::cout << "Current balance: " << balance << "$\n";
+                    std::cout << "Current balance: " << userdata.balance << "$\n";
                     break;
 
                 case('2'):
-                    transaction(atm_name, pin, balance, pass);
+                    transaction(userdata.username, userdata.pin, userdata.balance, userdata.password);
                     break;
 
                 case('3'):
-                    std::cout << "Enter your PIN: ";
-                    std::cin >> cpin;
-
-                    if (cpin != pin) {
-                        std::cout << "Inccorect PIN. ";
-                        break;
-                    } else {
-                        withdraw(balance, atm_name, pass, pin);
-                        break;
-                    }
+                    withdraw(userdata.balance, userdata.username, userdata.password, userdata.pin);
+                    break;
 
                 case('4'):
-                    std::cout << "4\n";
+                    deposit(userdata.balance, userdata.username, userdata.password, userdata.pin);
                     break;
 
                 case('5'):
-                    std::cout << "Please type in your PIN to do this action:";
-                    std::cin >> cpin;
-
-                    if (cpin == pin) {
-                        changepass(atm_name, pass, balance, pin);
-                        break;
-                    } else {
-                        std::cout << "Inccorect PIN\n";
-                        break;
-                    }
+                    changepass(userdata.username, userdata.password, userdata.balance, userdata.pin);
+                    break;
 
                 case('6'):
-                    viewtranslog(atm_name);
+                    Data::viewtranslog(userdata.username);
                     break;
+
+                case('7'):
+                    bool removed = removeAccount(userdata.username);
+                    if (removed) {
+                        return 0;
+                    }
+
             }
         }
+        return 0;
     }
 };
 
-int main() {
-    std::string lusername, lpassword;
-    int lbalance, lpin;
-    char ops;
+
+//Menu
+void loginMenu() {
+    user_data userdata;
+    char option;
 
     system("cls");  
     std::cout << "=== Welcome to ATM System ===" << std::endl;
@@ -379,41 +529,49 @@ int main() {
     while (true) {
         std::cout << "|| Log in: l || Sign up: y || Quit: q" << std::endl;
         std::cout << "Choose: ";
-        std::cin >> ops;
+        std::cin >> option;
 
-        if (ops == 'q' || ops == 'Q') {
+        if (option == 'q' || option == 'Q') {
             std::cout << "Goodbye!";
             break;
         }
 
-        switch (ops) {
+        switch (option) {
             case 'l':
             case 'L': {
                 std::cout << "Enter your username: ";
-                std::cin >> lusername;
+                std::cin >> userdata.username;
 
-                if (!(get_data(lusername, lpassword, lbalance, lpin))) {
+                //Check if the user exists or not
+                if (!(Data::get_data(userdata.username, userdata.password, userdata.balance, userdata.pin))) {
                     std::cout << "No account found with this name\n";
+                    break;
                 } else {
-                    bool logged = login(lpassword);
+                    bool logged = login(userdata.password);
                     if (logged == true) {
-                        your_ATM myClass(lbalance, lusername, lpin, lpassword);
-                        myClass.Main();
+                        Your_ATM myClass(userdata.balance, userdata.username, userdata.pin, userdata.password);
+                        myClass.Atm();
+                        return;
                     }
-                } break;
+                }
             }
 
             case 'y':
             case 'Y': 
                 std::cout << "Creating a new account for you . . .\n";
                 new_account();
-                break;
+                return;
 
             default:
                 std::cout << "Invalid option\n";
                 break;
         }
     }
+    return;
+}
 
+//Main function
+int main() {
+    loginMenu();
     return 0;
 }
